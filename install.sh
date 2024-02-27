@@ -25,3 +25,5 @@ pip install -e lib_guidance/mvdream/extern/MVDream
 
 pip install lpips
 # pip install git+https://github.com/NVlabs/tiny-cuda-nn/@v1.6#subdirectory=bindings/torch # Not used in release version
+
+pip install smplx

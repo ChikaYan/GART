@@ -36,6 +36,7 @@ from utils.ssim import ssim
 import argparse
 from datetime import datetime
 from test_utils import test
+from pathlib import Path
 
 try:
     # from lib_guidance.sd_utils import StableDiffusion
@@ -561,7 +562,10 @@ class TGFitter:
         default_bg=[1.0, 1.0, 1.0],
         add_bones_As=None,
     ):
-        gt_rgb, gt_mask, K, pose_base, pose_rest, global_trans, time_index = data_pack
+        gt_rgb, gt_mask, K, pose_base, pose_rest, global_trans, time_index, cam = data_pack
+        # cam = cam[0]
+        if isinstance(cam, list) and len(cam) == 1:
+            cam = cam[0]
         gt_rgb = gt_rgb.clone()
 
         pose = torch.cat([pose_base, pose_rest], dim=1)
@@ -594,7 +598,7 @@ class TGFitter:
             bg_tensor = torch.from_numpy(bg).float().to(gt_rgb.device)
             gt_rgb[i][gt_mask[i] == 0] = bg_tensor[None, None, :]
             render_pkg = render_cam_pcl(
-                mu[i], fr[i], sc[i], op[i], sph[i], H, W, K[i], False, act_sph_ord, bg
+                mu[i], fr[i], sc[i], op[i], sph[i], H, W, K[i], False, act_sph_ord, bg, cam=cam
             )
             if opa_th > 0.0:
                 bg_mask = render_pkg["alpha"][0] < opa_th
@@ -937,8 +941,8 @@ class TGFitter:
                 model.regaussian(optimizer, self.REGAUSSIAN_STD)
 
             stat_n_list.append(model.N)
-            if self.FAST_TRAINING:
-                continue
+            # if self.FAST_TRAINING:
+            #     continue
 
             # * Viz
             if (step + 1) % getattr(self, "VIZ_INTERVAL", 100) == 0 or step == 0:
@@ -957,20 +961,21 @@ class TGFitter:
                         pose_rest,
                         global_trans,
                         time_index,
+                        cam,
                     ) = real_data_pack
-                    viz_spinning(
-                        model,
-                        torch.cat([pose_base, pose_rest], 1)[:1],
-                        global_trans[:1],
-                        real_data_provider.H,
-                        real_data_provider.W,
-                        K[0],
-                        save_path=f"{self.log_dir}/viz_step/spinning_{step}.gif",
-                        time_index=time_index,
-                        active_sph_order=active_sph_order,
-                        # bg_color=getattr(self, "DEFAULT_BG", [1.0, 1.0, 1.0]),
-                        bg_color=[1.0, 1.0, 1.0],
-                    )
+                    # viz_spinning(
+                    #     model,
+                    #     torch.cat([pose_base, pose_rest], 1)[:1],
+                    #     global_trans[:1],
+                    #     real_data_provider.H,
+                    #     real_data_provider.W,
+                    #     K[0],
+                    #     save_path=f"{self.log_dir}/viz_step/spinning_{step}.gif",
+                    #     time_index=time_index,
+                    #     active_sph_order=active_sph_order,
+                    #     # bg_color=getattr(self, "DEFAULT_BG", [1.0, 1.0, 1.0]),
+                    #     bg_color=[1.0, 1.0, 1.0],
+                    # )
                 if fake_flag:
                     viz_rgb = [it["rgb"].permute(1, 2, 0) for it in guide_rendered_list]
                     viz_rgb = torch.cat(viz_rgb, dim=1).detach().cpu().numpy()
@@ -988,19 +993,19 @@ class TGFitter:
                 can_trans[:, -1] = 3.0
                 viz_H, viz_W = 512, 512
                 viz_K = fov2K(60, viz_H, viz_W)
-                viz_spinning(
-                    model,
-                    can_pose,
-                    can_trans,
-                    viz_H,
-                    viz_W,
-                    viz_K,
-                    save_path=f"{self.log_dir}/viz_step/spinning_can_{step}.gif",
-                    time_index=None,  # canonical pose use t=None
-                    active_sph_order=active_sph_order,
-                    # bg_color=getattr(self, "DEFAULT_BG", [1.0, 1.0, 1.0]),
-                    bg_color=[1.0, 1.0, 1.0],
-                )
+                # viz_spinning(
+                #     model,
+                #     can_pose,
+                #     can_trans,
+                #     viz_H,
+                #     viz_W,
+                #     viz_K,
+                #     save_path=f"{self.log_dir}/viz_step/spinning_can_{step}.gif",
+                #     time_index=None,  # canonical pose use t=None
+                #     active_sph_order=active_sph_order,
+                #     # bg_color=getattr(self, "DEFAULT_BG", [1.0, 1.0, 1.0]),
+                #     bg_color=[1.0, 1.0, 1.0],
+                # )
 
                 # viz the distrbution
                 plt.figure(figsize=(15, 3))
@@ -1081,7 +1086,7 @@ class TGFitter:
         seed_everything(self.SEED)
         model.eval()  # to get gradients, but never optimized
         evaluator.eval()
-        gt_rgb, gt_mask, K, pose_b, pose_r, trans = data_pack[:6]
+        gt_rgb, gt_mask, K, pose_b, pose_r, trans, _, cam = data_pack
         pose_b = pose_b.detach().clone()
         pose_r = pose_r.detach().clone()
         trans = trans.detach().clone()
@@ -1112,7 +1117,7 @@ class TGFitter:
             optimizer_smpl.zero_grad()
             loss_recon, _, rendered_list, _, _, _, _ = self._fit_step(
                 model,
-                [gt_rgb, gt_mask, K, pose_b, pose_r, trans, None],
+                [gt_rgb, gt_mask, K, pose_b, pose_r, trans, None, cam],
                 act_sph_ord=model.max_sph_order,
                 random_bg=False,
                 default_bg=getattr(self, "DEFAULT_BG", [1.0, 1.0, 1.0]),
@@ -1180,7 +1185,7 @@ class TGFitter:
         logging.info(f"Model has {model.N} points.")
         N_frames = len(real_data_provider.rgb_list)
         ret = real_data_provider(N_frames)
-        gt_rgb, gt_mask, K, pose_base, pose_rest, global_trans, time_index = ret
+        gt_rgb, gt_mask, K, pose_base, pose_rest, global_trans, time_index, cam = ret
         pose = torch.cat([pose_base, pose_rest], 1)
         H, W = gt_rgb.shape[1:3]
         sph_o = model.max_sph_order
@@ -1278,6 +1283,19 @@ def tg_fitting_eval(solver, dataset_mode, seq_name, optimized_seq):
             pose_rest_lr=2e-2,
             trans_lr=2e-2,
         )
+    elif dataset_mode == "xhuman":
+        test(
+            solver,
+            seq_name=seq_name,
+            tto_flag=True,
+            tto_step=50,
+            tto_decay=20,
+            dataset_mode=dataset_mode,
+            pose_base_lr=4e-3,
+            pose_rest_lr=4e-3,
+            trans_lr=4e-3,
+            training_optimized_seq=optimized_seq,
+        )
     else:
         pass
     # solver.eval_fps(solver.load_saved_model(), optimized_seq, rounds=10)
@@ -1337,6 +1355,17 @@ if __name__ == "__main__":
     elif dataset_mode == "dog_demo":
         mode = "dog"
         smpl_path = None
+    elif dataset_mode == "xhuman":
+        mode = "human"
+
+        XHUMAN_DATA_PATH = "/home/tw554/GauHuman/smplx_support/E_Avatar/dataset"
+        SMPLX_PKL_PATH = "/home/tw554/GART/models/smplx"
+        with (Path(XHUMAN_DATA_PATH) / seq_name / 'gender.txt').open('r') as f:
+            gender = f.read().strip().upper()
+
+        smpl_path = f"{SMPLX_PKL_PATH}/SMPLX_{gender}.pkl"
+    
+
     else:
         raise NotImplementedError()
 
@@ -1368,7 +1397,7 @@ if __name__ == "__main__":
         data_provider.load_state_dict(
             torch.load(osp.join(log_dir, "training_poses.pth")), strict=True
         )
-        solver.eval_fps(solver.load_saved_model(), data_provider, rounds=10)
+        # solver.eval_fps(solver.load_saved_model(), data_provider, rounds=10)
         tg_fitting_eval(solver, dataset_mode, seq_name, data_provider)
         logging.info("Done")
         sys.exit(0)
@@ -1389,15 +1418,15 @@ if __name__ == "__main__":
     logging.info(f"Optimization with {profile_fn}")
     _, optimized_seq = solver.run(data_provider)
 
-    if mode == "human":
-        viz_human_all(solver, optimized_seq)
-    elif mode == "dog":
-        viz_dog_all(solver, optimized_seq)
+    # if mode == "human":
+    #     viz_human_all(solver, optimized_seq)
+    # elif mode == "dog":
+    #     viz_dog_all(solver, optimized_seq)
 
-    solver.eval_fps(solver.load_saved_model(), optimized_seq, rounds=10)
-    if args.no_eval:
-        logging.info("No eval, done!")
-        sys.exit(0)
+    # solver.eval_fps(solver.load_saved_model(), optimized_seq, rounds=10)
+    # if args.no_eval:
+    #     logging.info("No eval, done!")
+    #     sys.exit(0)
 
     tg_fitting_eval(solver, dataset_mode, seq_name, optimized_seq)
 

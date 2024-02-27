@@ -124,6 +124,15 @@ def get_predefined_human_rest_pose(pose_type):
         raise ValueError("Unknown cano_pose: {}".format(pose_type))
     return body_pose_t.reshape(23, 3)
 
+def get_predefined_human_rest_pose_smplx(pose_type):
+    print(f"Using predefined pose: {pose_type}")
+    body_pose_t = torch.zeros((1, 162))
+    if pose_type.lower() == "t_pose":
+        pass
+    else:
+        raise ValueError("Unknown cano_pose: {}".format(pose_type))
+    return body_pose_t.reshape(54, 3)
+
 
 def get_predefined_dog_rest_pose(pose_type):
     if pose_type == "standing" or pose_type == "t_pose" or pose_type == "zero_pose":

@@ -25,7 +25,7 @@ import sys
 
 sys.path.append(osp.dirname(osp.abspath(__file__)))
 
-from smplx.smplx import SMPLLayer
+from lib_data.smplx.smplx import SMPLLayer
 
 META = {
     "my_377": {"begin_ith_frame": 0, "num_train_frame": 100, "frame_interval": 5},

@@ -35,6 +35,7 @@ class AdditionalBones(nn.Module):
         # pose+t-mlp
     ):
         super().__init__()
+        pose_dim = 162
         self.num_bones = num_bones
         if self.num_bones == 0:
             return

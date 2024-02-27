@@ -8,8 +8,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from smplx.smplx import SMPLLayer
-from smplx.smplx.lbs import blend_shapes, vertices2joints, batch_rigid_transform
+from lib_gart.smplx.smplx import SMPLLayer, SMPLXLayer
+from lib_gart.smplx.smplx.lbs import blend_shapes, vertices2joints, batch_rigid_transform
 from smal.smal_tpg import SMAL
 from voxel_deformer import VoxelDeformer
 
@@ -19,7 +19,7 @@ from pytorch3d.transforms import (
     quaternion_to_matrix,
     matrix_to_quaternion,
 )
-from model_utils import get_predefined_human_rest_pose, get_predefined_dog_rest_pose
+from model_utils import get_predefined_human_rest_pose, get_predefined_dog_rest_pose, get_predefined_human_rest_pose_smplx
 
 
 def get_template(
@@ -47,7 +47,14 @@ class SMPLTemplate(nn.Module):
     def __init__(self, smpl_model_path, init_beta, cano_pose_type, voxel_deformer_res):
         super().__init__()
         self.dim = 24
-        self._template_layer = SMPLLayer(model_path=smpl_model_path)
+        if 'SMPLX' in smpl_model_path:
+            self._template_layer = SMPLXLayer(model_path=smpl_model_path, ext='pkl',
+                                use_face_contour=True, flat_hand_mean=False, use_pca=False,
+                                num_betas=10, num_expression_coeffs=10)
+            self.use_smplx = True
+        else:
+            self._template_layer = SMPLLayer(model_path=smpl_model_path)
+            self.use_smplx = False
 
         if init_beta is None:
             init_beta = np.zeros(10)
@@ -56,13 +63,17 @@ class SMPLTemplate(nn.Module):
         self.cano_pose_type = cano_pose_type
         self.name = "smpl"
 
-        can_pose = get_predefined_human_rest_pose(cano_pose_type)
+        if self.use_smplx:
+            can_pose = get_predefined_human_rest_pose_smplx(cano_pose_type)
+        else:
+            can_pose = get_predefined_human_rest_pose(cano_pose_type)
         can_pose = axis_angle_to_matrix(torch.cat([torch.zeros(1, 3), can_pose], 0))
         self.register_buffer("canonical_pose", can_pose)
 
         init_smpl_output = self._template_layer(
             betas=init_beta[None],
-            body_pose=can_pose[None, 1:],
+            # body_pose=can_pose[None, 1:],
+            body_pose=None if self.use_smplx else can_pose[None, 1:],
             global_orient=can_pose[None, 0],
             return_full_pose=True,
         )
@@ -93,7 +104,8 @@ class SMPLTemplate(nn.Module):
     def get_init_vf(self):
         init_smpl_output = self._template_layer(
             betas=self.init_beta[None],
-            body_pose=self.canonical_pose[None, 1:],
+            # body_pose=self.canonical_pose[None, 1:],
+            body_pose=None if self.use_smplx else self.canonical_pose[None, 1:],
             global_orient=self.canonical_pose[None, 0],
             return_full_pose=True,
         )

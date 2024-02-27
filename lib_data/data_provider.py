@@ -114,6 +114,7 @@ class RealDataOptimizablePoseProviderPose(nn.Module):
             pose_list,
             global_trans_list,
             betas,
+            cam_list,
         ) = self.prepare_for_fitting(dataset)
         for name, tensor in zip(
             ["rgb_list", "mask_list", "K_list", "betas"],
@@ -122,6 +123,8 @@ class RealDataOptimizablePoseProviderPose(nn.Module):
             # self.register_buffer(name, tensor)
             # * don't register buffer, just save them in RAM
             setattr(self, name, tensor)
+
+        self.cam_list = cam_list
 
         self.pose_base_list = nn.Parameter(pose_list[:, :1])
         self.pose_rest_list = nn.Parameter(pose_list[:, 1:])
@@ -229,6 +232,9 @@ class RealDataOptimizablePoseProviderPose(nn.Module):
         #     complement_Ts = Ts[t]
         #     return gt_rgb, gt_mask, K, pose_base, pose_rest, global_trans, complement_Ts
         # else:
+
+        cam_list = [self.cam_list[i] for i in t]
+
         return (
             gt_rgb.to(device),
             gt_mask.to(device),
@@ -237,10 +243,12 @@ class RealDataOptimizablePoseProviderPose(nn.Module):
             pose_rest,
             global_trans,
             t.to(device),
+            cam_list
         )
 
     def prepare_for_fitting(self, dataset):
         rgb_list, mask_list, K_list, pose_list, global_trans_list = [], [], [], [], []
+        cam_list = []
         for t in tqdm(range(len(dataset))):
             poses, meta = dataset[t]
             betas, pose, global_trans = (
@@ -262,6 +270,10 @@ class RealDataOptimizablePoseProviderPose(nn.Module):
             self.H, self.W = gt_rgb.shape[:2]  # H,W,3
             rgb_list.append(gt_rgb), K_list.append(K)
             mask_list.append(mask)
+            if "cam" in poses:
+                cam_list.append(poses['cam'])
+            else:
+                cam_list.append(None)
         pose_list = torch.stack(pose_list)  # T, 24, 3
         global_trans_list = torch.stack(global_trans_list)
         rgb_list = torch.stack(rgb_list)  # T, H, W, 3
@@ -270,7 +282,7 @@ class RealDataOptimizablePoseProviderPose(nn.Module):
 
         if not self.balance:
             self.selection_prob = np.ones(rgb_list.shape[0]) / rgb_list.shape[0]
-            return rgb_list, mask_list, K_list, pose_list, global_trans_list, betas
+            return rgb_list, mask_list, K_list, pose_list, global_trans_list, betas, cam_list
 
         # * Weight the views
         if pose_list.ndim == 3:
@@ -315,7 +327,7 @@ class RealDataOptimizablePoseProviderPose(nn.Module):
         self.angle_list = angle_list
         self.log_viz_dens = log_viz_dens
 
-        return rgb_list, mask_list, K_list, pose_list, global_trans_list, betas
+        return rgb_list, mask_list, K_list, pose_list, global_trans_list, betas, cam_list
 
     def viz_selection_prob(self, save_fn):
         if not self.balance:

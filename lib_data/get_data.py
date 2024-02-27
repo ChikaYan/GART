@@ -8,6 +8,7 @@ from zju_mocap import Dataset as ZJUDataset, get_batch_sampler
 from dog_demo import Dataset as DogDemoDataset
 from data_provider import RealDataOptimizablePoseProviderPose, DatabasePoseProvider
 from instant_avatar_wild import Dataset as InstantAvatarWildDataset
+from xhuman import Dataset as XhumanDataset
 import logging
 import numpy as np
 import torch
@@ -61,6 +62,12 @@ def prepare_real_seq(
         )
     elif dataset_mode == "dog_demo":
         dataset = DogDemoDataset(data_root="./data/dog_data_official/", video_name=seq_name)
+    elif dataset_mode == "xhuman":
+        XHUMAN_DATA_PATH = "/home/tw554/GauHuman/smplx_support/E_Avatar/dataset"
+        dataset = XhumanDataset(
+            data_root=f"{XHUMAN_DATA_PATH}/{seq_name}",
+            split=split,
+        )
     else:
         raise NotImplementedError("Unknown mode: {}".format(dataset_mode))
 

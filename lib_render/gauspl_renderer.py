@@ -14,6 +14,28 @@ import numpy as np
 import torch.nn.functional as F
 
 
+def getProjectionMatrix_refine(K: torch.Tensor, H, W, znear=0.001, zfar=1000):
+    fx = K[0, 0]
+    fy = K[1, 1]
+    cx = K[0, 2]
+    cy = K[1, 2]
+    s = K[0, 1]
+    P = torch.zeros(4, 4, dtype=K.dtype, device=K.device)
+    z_sign = 1.0
+
+    P[0, 0] = 2 * fx / W
+    P[0, 1] = 2 * s / W
+    P[0, 2] = -1 + 2 * (cx / W)
+
+    P[1, 1] = 2 * fy / H
+    P[1, 2] = -1 + 2 * (cy / H)
+
+    P[2, 2] = z_sign * (zfar + znear) / (zfar - znear)
+    P[2, 3] = -1 * z_sign * 2 * zfar * znear / (zfar - znear) # z_sign * 2 * zfar * znear / (zfar - znear)
+    P[3, 2] = z_sign
+
+    return P
+
 def render_cam_pcl(
     xyz,
     frame,
@@ -26,6 +48,7 @@ def render_cam_pcl(
     verbose=False,
     active_sph_order=0,
     bg_color=[1.0, 1.0, 1.0],
+    cam=None,
 ):
     # ! Camera is at origin, every input is in camera coordinate space
 
@@ -46,30 +69,51 @@ def render_cam_pcl(
     except:
         pass
 
-    # * Specially handle the non-centered camera, using first padding and finally crop
-    if abs(H // 2 - CAM_K[1, 2]) > 1.0 or abs(W // 2 - CAM_K[0, 2]) > 1.0:
-        center_handling_flag = True
-        left_w, right_w = CAM_K[0, 2], W - CAM_K[0, 2]
-        top_h, bottom_h = CAM_K[1, 2], H - CAM_K[1, 2]
-        new_W = int(2 * max(left_w, right_w))
-        new_H = int(2 * max(top_h, bottom_h))
+    if cam is None:
+        # * Specially handle the non-centered camera, using first padding and finally crop
+        if abs(H // 2 - CAM_K[1, 2]) > 1.0 or abs(W // 2 - CAM_K[0, 2]) > 1.0:
+            center_handling_flag = True
+            left_w, right_w = CAM_K[0, 2], W - CAM_K[0, 2]
+            top_h, bottom_h = CAM_K[1, 2], H - CAM_K[1, 2]
+            new_W = int(2 * max(left_w, right_w))
+            new_H = int(2 * max(top_h, bottom_h))
+        else:
+            center_handling_flag = False
+            new_W, new_H = W, H
+        
+        # Set up rasterization configuration
+        FoVx = focal2fov(CAM_K[0, 0], new_W)
+        FoVy = focal2fov(CAM_K[1, 1], new_H)
+        tanfovx = math.tan(FoVx * 0.5)
+        tanfovy = math.tan(FoVy * 0.5)
+
+        # TODO: Check dynamic gaussian repos and original gaussian repo, they use projection matrix to handle non-centered K, not using this stupid padding like me
+        viewmatrix = torch.from_numpy(getWorld2View2(np.eye(3), np.zeros(3)).transpose(0, 1)).to(device)
+        projection_matrix = (
+            getProjectionMatrix(znear=0.01, zfar=1.0, fovX=FoVx, fovY=FoVy).transpose(0, 1).to(device)
+        )
+        full_proj_transform = (viewmatrix.unsqueeze(0).bmm(projection_matrix.unsqueeze(0))).squeeze(0)
+        camera_center = viewmatrix.inverse()[3, :3]
+
     else:
-        center_handling_flag = False
+        zfar = 1000 #100.0
+        znear = 0.001 #0.01
+        trans = np.array([0.0, 0.0, 0.0])
+        scale = 1.
+        world_view_transform = torch.tensor(getWorld2View2(cam.R, cam.T, trans, scale)).transpose(0, 1).to(device)
+        projection_matrix = getProjectionMatrix_refine(CAM_K, H, W, znear, zfar).transpose(0, 1)
+        full_proj_transform = (world_view_transform.unsqueeze(0).bmm(projection_matrix.type_as(xyz).unsqueeze(0))).squeeze(0)
+        camera_center = world_view_transform.inverse()[3, :3]
+
         new_W, new_H = W, H
 
-    # Set up rasterization configuration
-    FoVx = focal2fov(CAM_K[0, 0], new_W)
-    FoVy = focal2fov(CAM_K[1, 1], new_H)
-    tanfovx = math.tan(FoVx * 0.5)
-    tanfovy = math.tan(FoVy * 0.5)
+        tanfovx = math.tan(cam.FovX * 0.5)
+        tanfovy = math.tan(cam.FovY * 0.5)
 
-    # TODO: Check dynamic gaussian repos and original gaussian repo, they use projection matrix to handle non-centered K, not using this stupid padding like me
-    viewmatrix = torch.from_numpy(getWorld2View2(np.eye(3), np.zeros(3)).transpose(0, 1)).to(device)
-    projection_matrix = (
-        getProjectionMatrix(znear=0.01, zfar=1.0, fovX=FoVx, fovY=FoVy).transpose(0, 1).to(device)
-    )
-    full_proj_transform = (viewmatrix.unsqueeze(0).bmm(projection_matrix.unsqueeze(0))).squeeze(0)
-    camera_center = viewmatrix.inverse()[3, :3]
+        viewmatrix = world_view_transform
+        center_handling_flag = False
+
+
 
     raster_settings = GaussianRasterizationSettings(
         image_height=new_H,

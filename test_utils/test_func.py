@@ -21,6 +21,9 @@ from lib_data.instant_avatar_wild import Dataset as InstantAvatarWildDataset
 from lib_data.dog_demo import Dataset as DogDemoDataset
 from matplotlib import pyplot as plt
 import logging
+from lib_data.xhuman import Dataset as XhumanDataset
+from pathlib import Path
+
 
 
 def get_evaluator(mode, device):
@@ -77,6 +80,7 @@ def test(
         "zju",
         "instant_avatar_wild",
         "dog_demo",
+        "xhuman",
     ], f"Unknown dataset mode {dataset_mode}"
 
     if dataset_mode == "people_snapshot":
@@ -138,6 +142,14 @@ def test(
         test_dataset = DogDemoDataset(
             data_root="./data/dog_data_official/", video_name=seq_name, test=True
         )
+    elif dataset_mode == "xhuman":
+        eval_mode = "nvr"
+        XHUMAN_DATA_PATH = "/home/tw554/GauHuman/smplx_support/E_Avatar/dataset"
+        test_dataset = XhumanDataset(
+            data_root=f"{XHUMAN_DATA_PATH}/{seq_name}",
+            split="test",
+        )
+        bg = [0.0, 0.0, 0.0]  # zju use black background
     else:
         raise NotImplementedError()
 
@@ -253,6 +265,7 @@ def _save_eval_maps(
                     pose_r,
                     trans,
                     None,
+                    data['cam'],
                 ],
                 model=model,
                 evaluator=tto_evaluator,
@@ -280,18 +293,19 @@ def _save_eval_maps(
                 save_fn,
                 time_index=batch_idx,
                 As=As,
+                cam = data['cam'],
             )
         else:
             save_fn = osp.join(test_save_dir, fn)
             _save_render_image_from_pose(
-                model, pose, trans, H, W, K, bg, rgb_gt, save_fn, time_index=batch_idx
+                model, pose, trans, H, W, K, bg, rgb_gt, save_fn, time_index=batch_idx, cam=data['cam'],
             )
     return
 
 
 @torch.no_grad()
 def _save_render_image_from_pose(
-    model, pose, trans, H, W, K, bg, rgb_gt, save_fn, time_index=None, As=None
+    model, pose, trans, H, W, K, bg, rgb_gt, save_fn, time_index=None, As=None, cam=None
 ):
     act_sph_order = model.max_sph_order
     device = pose.device
@@ -303,7 +317,7 @@ def _save_render_image_from_pose(
         pose, trans, additional_dict=additional_dict, active_sph_order=act_sph_order
     )  # TODO: directly input optimized As!
     render_pkg = render_cam_pcl(
-        mu[0], fr[0], sc[0], op[0], sph[0], H, W, K, False, act_sph_order, bg
+        mu[0], fr[0], sc[0], op[0], sph[0], H, W, K, False, act_sph_order, bg, cam=cam
     )
     mask = (render_pkg["alpha"].squeeze(0) > 0.0).bool()
     render_pkg["rgb"][:, ~mask] = bg[0]  # either 0.0 or 1.0
@@ -317,6 +331,13 @@ def _save_render_image_from_pose(
         [rgb_gt[..., [2, 1, 0]], pred_rgb[..., [2, 1, 0]], errmap], dim=2
     )  # ! note, here already swapped the channel order
     cv2.imwrite(save_fn, img.cpu().numpy()[0] * 255)
+
+    # save invdividual img
+    render_dir = Path(save_fn).parent.parent / 'test_renderings' / os.path.join(*cam.image_path.split('/')[-5:])
+    render_dir.parent.mkdir(exist_ok=True, parents=True)
+
+    cv2.imwrite(str(render_dir), pred_rgb[..., [2, 1, 0]].cpu().numpy()[0] * 255)
+
     return
 
 

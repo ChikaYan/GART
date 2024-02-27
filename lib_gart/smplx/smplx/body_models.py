@@ -58,6 +58,8 @@ TensorOutput = namedtuple(
         "jaw_pose",
         "transl",
         "full_pose",
+        "A",
+        "J",
     ],
 )
 
@@ -1522,16 +1524,32 @@ class SMPLXLayer(SMPLX):
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
-        vertices, joints = lbs(
-            shape_components,
+        # vertices, joints = lbs(
+        #     shape_components,
+        #     full_pose,
+        #     self.v_template,
+        #     shapedirs,
+        #     self.posedirs,
+        #     self.J_regressor,
+        #     self.parents,
+        #     self.lbs_weights,
+        #     pose2rot=False,
+        # )
+
+        vertices, joints, T, v_posed, A, J= lbs(
+            betas,
             full_pose,
             self.v_template,
-            shapedirs,
+            self.shapedirs,
             self.posedirs,
             self.J_regressor,
             self.parents,
             self.lbs_weights,
             pose2rot=False,
+            return_T=True,
+            return_posed_v=True,
+            return_A=True,
+            return_J=True,
         )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(dim=0).expand(batch_size, -1).contiguous()
@@ -1579,6 +1597,8 @@ class SMPLXLayer(SMPLX):
             jaw_pose=jaw_pose,
             transl=transl if transl != None else Tensor(0),
             full_pose=full_pose if return_full_pose else Tensor(0),
+            A = A,
+            J = J,
         )
 
         return output
