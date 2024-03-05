@@ -315,9 +315,15 @@ class Dataset(Dataset):
                 image_name = ims_dict[view][pose_index].split('.')[0]
                 image = np.array(imageio.imread(image_path).astype(np.float32) / 255.)
 
-                msk_path = image_path.replace('image', 'mask').replace('jpg', 'png')
-                msk = imageio.imread(msk_path)
-                msk = (msk != 0).astype(np.uint8)
+                # msk_path = image_path.replace('image', 'mask').replace('jpg', 'png')
+                # msk = imageio.imread(msk_path)
+                # msk = (msk != 0).astype(np.uint8)
+
+                msk_path = image_path.replace('image', 'mask_new').replace('jpg', 'png')
+                msk_alpha = imageio.imread(msk_path)
+                msk_alpha = msk_alpha / 255.
+                # msk = (msk_alpha != 0).astype(np.uint8)
+                msk = (msk_alpha > 0.3).astype(np.uint8)
 
                 if not novel_view_vis:
                     K = np.array(cams_dict[view]['K'])
@@ -336,7 +342,8 @@ class Dataset(Dataset):
                     cam_ind = cam_inds[pose_index][view]
                     K = np.array(cams['K'][cam_ind])
 
-                image[msk == 0] = 1 if white_background else 0
+                # image[msk == 0] = 1 if white_background else 0
+                image = image * msk_alpha[..., None]
 
                 # change from OpenGL/Blender camera axes (Y up, Z back) to COLMAP (Y down, Z forward)
                 w2c = np.eye(4)
