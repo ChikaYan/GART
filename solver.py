@@ -1296,6 +1296,19 @@ def tg_fitting_eval(solver, dataset_mode, seq_name, optimized_seq):
             trans_lr=4e-3,
             training_optimized_seq=optimized_seq,
         )
+    elif dataset_mode == "ubody":
+        test(
+            solver,
+            seq_name=seq_name,
+            tto_flag=True,
+            tto_step=50,
+            tto_decay=20,
+            dataset_mode=dataset_mode,
+            pose_base_lr=4e-3,
+            pose_rest_lr=4e-3,
+            trans_lr=4e-3,
+            training_optimized_seq=optimized_seq,
+        )
     else:
         pass
     # solver.eval_fps(solver.load_saved_model(), optimized_seq, rounds=10)
@@ -1361,6 +1374,15 @@ if __name__ == "__main__":
         XHUMAN_DATA_PATH = "/home/tw554/GauHuman/smplx_support/E_Avatar/dataset"
         SMPLX_PKL_PATH = "/home/tw554/GART/models/smplx"
         with (Path(XHUMAN_DATA_PATH) / seq_name / 'gender.txt').open('r') as f:
+            gender = f.read().strip().upper()
+
+        smpl_path = f"{SMPLX_PKL_PATH}/SMPLX_{gender}.pkl"
+    elif dataset_mode == "ubody":
+        mode = "human"
+
+        UBODY_DATA_PATH = "/home/tw554/GART/data/Transfer"
+        SMPLX_PKL_PATH = "/home/tw554/GART/models/smplx"
+        with (Path(UBODY_DATA_PATH) / seq_name / 'gender.txt').open('r') as f:
             gender = f.read().strip().upper()
 
         smpl_path = f"{SMPLX_PKL_PATH}/SMPLX_{gender}.pkl"

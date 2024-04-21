@@ -22,6 +22,7 @@ from lib_data.dog_demo import Dataset as DogDemoDataset
 from matplotlib import pyplot as plt
 import logging
 from lib_data.xhuman import Dataset as XhumanDataset
+from lib_data.ubody import Dataset as UbodyDataset
 from pathlib import Path
 
 
@@ -81,6 +82,7 @@ def test(
         "instant_avatar_wild",
         "dog_demo",
         "xhuman",
+        "ubody",
     ], f"Unknown dataset mode {dataset_mode}"
 
     if dataset_mode == "people_snapshot":
@@ -147,6 +149,14 @@ def test(
         XHUMAN_DATA_PATH = "/home/tw554/GauHuman/smplx_support/E_Avatar/dataset"
         test_dataset = XhumanDataset(
             data_root=f"{XHUMAN_DATA_PATH}/{seq_name}",
+            split="test",
+        )
+        bg = [0.0, 0.0, 0.0]  # zju use black background
+    elif dataset_mode == "ubody":
+        eval_mode = "nvr"
+        UBODY_DATA_PATH = "/home/tw554/GART/data/Transfer"
+        test_dataset = UbodyDataset(
+            data_root=f"{UBODY_DATA_PATH}/{seq_name}",
             split="test",
         )
         bg = [0.0, 0.0, 0.0]  # zju use black background

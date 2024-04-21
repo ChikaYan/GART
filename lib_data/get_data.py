@@ -9,6 +9,7 @@ from dog_demo import Dataset as DogDemoDataset
 from data_provider import RealDataOptimizablePoseProviderPose, DatabasePoseProvider
 from instant_avatar_wild import Dataset as InstantAvatarWildDataset
 from xhuman import Dataset as XhumanDataset
+from ubody import Dataset as UbodyDataset
 import logging
 import numpy as np
 import torch
@@ -67,6 +68,14 @@ def prepare_real_seq(
         dataset = XhumanDataset(
             data_root=f"{XHUMAN_DATA_PATH}/{seq_name}",
             split=split,
+            image_zoom_ratio=image_zoom_ratio,
+        )
+    elif dataset_mode == "ubody":
+        UBODY_DATA_PATH = "/home/tw554/GART/data/Transfer"
+        dataset = UbodyDataset(
+            data_root=f"{UBODY_DATA_PATH}/{seq_name}",
+            split=split,
+            image_zoom_ratio=image_zoom_ratio,
         )
     else:
         raise NotImplementedError("Unknown mode: {}".format(dataset_mode))
